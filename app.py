@@ -69,7 +69,6 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
                     "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number"]) else "Match")),
         axis=1
     )
-
     return combined[combined["Status"] != "Match"].reset_index(drop=True)
 
 # === STREAMLIT APP ===
