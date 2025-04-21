@@ -9,8 +9,8 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     pdf = PdfReader(BytesIO(pdf_bytes))
     pdf_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
 
-    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+?)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
-    pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD", "Date", "Action", "Key Findings", "Case Number"])
+    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", pdf_text)
+    pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD"]).drop_duplicates()
     pdf_df["Source"] = "PDF"
 
     df = pd.read_excel(BytesIO(excel_bytes))
@@ -22,10 +22,10 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
 
     excel_data = []
     for _, row in df.iterrows():
-        name_field = row.get("Individual Listed") or row.get("Business Name")
-        if pd.isna(name_field):
+        combined_fields = f"{row.get('Individual Listed', '')} {row.get('Business Name', '')}"
+        match = re.search(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", combined_fields)
+        if not match:
             continue
-        match = re.search(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", str(name_field))
         if match:
             summary = row.get("Summary of Disciplinary Action", "").split("\n")
             excel_data.append({
@@ -42,23 +42,26 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     excel_df = pd.DataFrame(excel_data)
     excel_df["Source"] = "Excel"
 
-    if "CRD" not in pdf_df.columns or "CRD" not in excel_df.columns:
-        return pd.DataFrame([{"Error": "Missing CRD column in one of the sources. Ensure your Excel matches the required format."}])
+    
 
     if pdf_df.empty or excel_df.empty:
         return pd.DataFrame([{"Error": "One or both sources did not contain extractable CRD data. Check file formatting."}])
 
     combined = pd.merge(pdf_df, excel_df, on="CRD", how="outer", suffixes=("_PDF", "_Excel"))
 
-    for field in ["Name", "Date", "Action", "Key Findings", "Case Number"]:
+    for field in ["Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"]:
         combined[f"{field} Match"] = combined.apply(
             lambda row: "✅" if row.get(f"{field}_PDF") == row.get(f"{field}_Excel") else "❌", axis=1
         )
 
     combined["Status"] = combined.apply(
-        lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
-                    "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
-                    "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number"]) else "Match")),
+        lambda row: (
+            "Missing in Excel" if pd.isna(row.get("Name_Excel")) else
+            "Missing in PDF" if pd.isna(row.get("Name_PDF")) else
+            "Mismatch" if any(row.get(f"{f} Match") == "❌" for f in [
+                "Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"
+            ]) else "Match"
+        ),
         axis=1
     )
 
@@ -76,6 +79,8 @@ The tool will match entries by CRD and compare:
 - ✅ Action
 - ✅ Key Findings
 - ✅ Case Number
+- ✅ Fines/Restitution
+- ✅ City/State
 
 It will return a list of mismatches or missing entries.
 """)
