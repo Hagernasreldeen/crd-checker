@@ -57,8 +57,12 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
 
     combined["Status"] = combined.apply(
         lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
-                    "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
-                    "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"]) else "Match")),
+            "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
+                "Mismatch" if any(row[f"{f} Match"] == "❌" for f in [
+                    "Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"
+                ]) else "Match"
+            )
+        ),
         axis=1
     ) else (
                     "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
