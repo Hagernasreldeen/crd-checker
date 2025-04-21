@@ -9,8 +9,8 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     pdf = PdfReader(BytesIO(pdf_bytes))
     pdf_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
 
-    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+?)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
-    pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD", "Date", "Action", "Key Findings", "Case Number"])
+    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", pdf_text)
+    pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD"]).drop_duplicates()
     pdf_df["Source"] = "PDF"
 
     df = pd.read_excel(BytesIO(excel_bytes))
