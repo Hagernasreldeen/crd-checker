@@ -56,17 +56,13 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
         )
 
     combined["Status"] = combined.apply(
-        lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
-            "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
-                "Mismatch" if any(row[f"{f} Match"] == "❌" for f in [
-                    "Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"
-                ]) else "Match"
-            )
+        lambda row: (
+            "Missing in Excel" if pd.isna(row.get("Name_Excel")) else
+            "Missing in PDF" if pd.isna(row.get("Name_PDF")) else
+            "Mismatch" if any(row.get(f"{f} Match") == "❌" for f in [
+                "Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"
+            ]) else "Match"
         ),
-        axis=1
-    ) else (
-                    "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
-                    "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number"]) else "Match")),
         axis=1
     )
 
@@ -84,6 +80,8 @@ The tool will match entries by CRD and compare:
 - ✅ Action
 - ✅ Key Findings
 - ✅ Case Number
+- ✅ Fines/Restitution
+- ✅ City/State
 
 It will return a list of mismatches or missing entries.
 """)
@@ -112,9 +110,7 @@ if pdf_file and excel_file:
         if search:
             mismatches = mismatches[mismatches["CRD"].astype(str).str.contains(search.strip())]
 
-        from streamlit_extras.dataframe_explorer import dataframe_explorer
-styled_df = mismatches.style.applymap(lambda val: "background-color: #FFCCCC" if val == "❌" else "")
-st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(mismatches, use_container_width=True)
 
         csv = mismatches.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Mismatches as CSV", data=csv, file_name="crd_mismatches.csv")
