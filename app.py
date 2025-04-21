@@ -22,10 +22,10 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
 
     excel_data = []
     for _, row in df.iterrows():
-        name_field = row.get("Individual Listed") or row.get("Business Name")
-        if pd.isna(name_field):
+        combined_fields = f"{row.get('Individual Listed', '')} {row.get('Business Name', '')}"
+        match = re.search(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", combined_fields)
+        if not match:
             continue
-        match = re.search(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", str(name_field))
         if match:
             summary = row.get("Summary of Disciplinary Action", "").split("\n")
             excel_data.append({
