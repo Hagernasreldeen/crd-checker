@@ -50,13 +50,17 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
 
     combined = pd.merge(pdf_df, excel_df, on="CRD", how="outer", suffixes=("_PDF", "_Excel"))
 
-    for field in ["Name", "Date", "Action", "Key Findings", "Case Number"]:
+    for field in ["Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"]:
         combined[f"{field} Match"] = combined.apply(
             lambda row: "✅" if row.get(f"{field}_PDF") == row.get(f"{field}_Excel") else "❌", axis=1
         )
 
     combined["Status"] = combined.apply(
         lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
+                    "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
+                    "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number", "Fines/Restitution", "City/State"]) else "Match")),
+        axis=1
+    ) else (
                     "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
                     "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number"]) else "Match")),
         axis=1
