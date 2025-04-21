@@ -11,7 +11,7 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     pdf_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
 
     # Extract name and CRD pairs from PDF (enhanced logic)
-    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
+    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+?)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
     pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD", "Date", "Action", "Key Findings", "Case Number"])
     pdf_df["Source"] = "PDF"
 
@@ -40,6 +40,13 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
 
     excel_df = pd.DataFrame(excel_data)
     excel_df["Source"] = "Excel"
+
+    # Safety check: ensure required columns exist
+    if "CRD" not in pdf_df.columns or "CRD" not in excel_df.columns:
+        return pd.DataFrame([{"Error": "Missing CRD column in one of the sources. Ensure your Excel matches the required format."}])
+
+    if pdf_df.empty or excel_df.empty:
+        return pd.DataFrame([{"Error": "One or both sources did not contain extractable CRD data. Check file formatting."}])
 
     # Merge based on CRD
     combined = pd.merge(pdf_df, excel_df, on="CRD", how="outer", suffixes=("_PDF", "_Excel"))
@@ -83,8 +90,11 @@ if pdf_file and excel_file:
     with st.spinner("Analyzing files and matching CRD data..."):
         mismatches = match_crds_from_pdf_and_excel(pdf_file.read(), excel_file.read())
 
-    st.success("Comparison complete! See results below.")
-    st.dataframe(mismatches, use_container_width=True)
+    if "Error" in mismatches.columns:
+        st.error(mismatches.iloc[0]["Error"])
+    else:
+        st.success("Comparison complete! See results below.")
+        st.dataframe(mismatches, use_container_width=True)
 
-    csv = mismatches.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Mismatches as CSV", data=csv, file_name="crd_mismatches.csv")
+        csv = mismatches.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download Mismatches as CSV", data=csv, file_name="crd_mismatches.csv")
