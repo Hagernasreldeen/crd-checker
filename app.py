@@ -112,7 +112,9 @@ if pdf_file and excel_file:
         if search:
             mismatches = mismatches[mismatches["CRD"].astype(str).str.contains(search.strip())]
 
-        st.dataframe(mismatches, use_container_width=True)
+        from streamlit_extras.dataframe_explorer import dataframe_explorer
+styled_df = mismatches.style.applymap(lambda val: "background-color: #FFCCCC" if val == "❌" else "")
+st.dataframe(styled_df, use_container_width=True)
 
         csv = mismatches.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Mismatches as CSV", data=csv, file_name="crd_mismatches.csv")
