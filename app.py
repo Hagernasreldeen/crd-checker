@@ -6,19 +6,20 @@ from io import BytesIO
 
 # === TOOL FUNCTION ===
 def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
-    # Load PDF from bytes
     pdf = PdfReader(BytesIO(pdf_bytes))
     pdf_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
 
-    # Extract name and CRD pairs from PDF (enhanced logic)
     pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+?)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
     pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD", "Date", "Action", "Key Findings", "Case Number"])
     pdf_df["Source"] = "PDF"
 
-    # Load Excel file
     df = pd.read_excel(BytesIO(excel_bytes))
 
-    # Extract additional fields from Excel
+    required_columns = ["Individual Listed", "Business Name", "Summary of Disciplinary Action"]
+    for col in required_columns:
+        if col not in df.columns:
+            return pd.DataFrame([{"Error": f"Missing required column in Excel: {col}"}])
+
     excel_data = []
     for _, row in df.iterrows():
         name_field = row.get("Individual Listed") or row.get("Business Name")
@@ -41,23 +42,19 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     excel_df = pd.DataFrame(excel_data)
     excel_df["Source"] = "Excel"
 
-    # Safety check: ensure required columns exist
     if "CRD" not in pdf_df.columns or "CRD" not in excel_df.columns:
         return pd.DataFrame([{"Error": "Missing CRD column in one of the sources. Ensure your Excel matches the required format."}])
 
     if pdf_df.empty or excel_df.empty:
         return pd.DataFrame([{"Error": "One or both sources did not contain extractable CRD data. Check file formatting."}])
 
-    # Merge based on CRD
     combined = pd.merge(pdf_df, excel_df, on="CRD", how="outer", suffixes=("_PDF", "_Excel"))
 
-    # Compare fields
     for field in ["Name", "Date", "Action", "Key Findings", "Case Number"]:
         combined[f"{field} Match"] = combined.apply(
             lambda row: "✅" if row.get(f"{field}_PDF") == row.get(f"{field}_Excel") else "❌", axis=1
         )
 
-    # Status Summary
     combined["Status"] = combined.apply(
         lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
                     "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
@@ -83,8 +80,16 @@ The tool will match entries by CRD and compare:
 It will return a list of mismatches or missing entries.
 """)
 
-pdf_file = st.file_uploader("Upload PDF Report", type=["pdf"])
-excel_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+with st.sidebar:
+    use_demo = st.checkbox("Use Demo Files")
+
+if use_demo:
+    pdf_file = open("demo_files/sample.pdf", "rb")
+    excel_file = open("demo_files/sample.xlsx", "rb")
+    st.success("Demo files loaded.")
+else:
+    pdf_file = st.file_uploader("Upload PDF Report", type=["pdf"])
+    excel_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if pdf_file and excel_file:
     with st.spinner("Analyzing files and matching CRD data..."):
@@ -94,6 +99,11 @@ if pdf_file and excel_file:
         st.error(mismatches.iloc[0]["Error"])
     else:
         st.success("Comparison complete! See results below.")
+
+        search = st.text_input("Search by CRD or Name")
+        if search:
+            mismatches = mismatches[mismatches.apply(lambda row: search.lower() in str(row).lower(), axis=1)]
+
         st.dataframe(mismatches, use_container_width=True)
 
         csv = mismatches.to_csv(index=False).encode("utf-8")
