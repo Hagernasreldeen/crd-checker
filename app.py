@@ -1,0 +1,90 @@
+import re
+import pandas as pd
+from PyPDF2 import PdfReader
+import streamlit as st
+from io import BytesIO
+
+# === TOOL FUNCTION ===
+def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
+    # Load PDF from bytes
+    pdf = PdfReader(BytesIO(pdf_bytes))
+    pdf_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
+
+    # Extract name and CRD pairs from PDF (enhanced logic)
+    pdf_entries = re.findall(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\).*?(Date:.*?)\n.*?(Action:.*?)\n.*?(Key Findings:.*?)\n.*?(FINRA Case #[0-9]+)", pdf_text, re.DOTALL)
+    pdf_df = pd.DataFrame(pdf_entries, columns=["Name", "CRD", "Date", "Action", "Key Findings", "Case Number"])
+    pdf_df["Source"] = "PDF"
+
+    # Load Excel file
+    df = pd.read_excel(BytesIO(excel_bytes))
+
+    # Extract additional fields from Excel
+    excel_data = []
+    for _, row in df.iterrows():
+        name_field = row.get("Individual Listed") or row.get("Business Name")
+        if pd.isna(name_field):
+            continue
+        match = re.search(r"([A-Z][a-zA-Z .,'-]+?)\s*\(CRD #(\d+)\)", str(name_field))
+        if match:
+            summary = row.get("Summary of Disciplinary Action", "").split("\n")
+            excel_data.append({
+                "Name": match.group(1).strip(),
+                "CRD": match.group(2).strip(),
+                "City/State": row.get("City/State of Business or Individual", ""),
+                "Fines/Restitution": row.get("Fines/Restitution", ""),
+                "Date": summary[0].replace("Date: ", "") if len(summary) > 0 else "",
+                "Action": summary[1].replace("Action: ", "") if len(summary) > 1 else "",
+                "Key Findings": summary[2].replace("Key Findings: ", "") if len(summary) > 2 else "",
+                "Case Number": re.search(r"FINRA Case #[0-9]+", row.get("Summary of Disciplinary Action", "")).group(0) if re.search(r"FINRA Case #[0-9]+", row.get("Summary of Disciplinary Action", "")) else ""
+            })
+
+    excel_df = pd.DataFrame(excel_data)
+    excel_df["Source"] = "Excel"
+
+    # Merge based on CRD
+    combined = pd.merge(pdf_df, excel_df, on="CRD", how="outer", suffixes=("_PDF", "_Excel"))
+
+    # Compare fields
+    for field in ["Name", "Date", "Action", "Key Findings", "Case Number"]:
+        combined[f"{field} Match"] = combined.apply(
+            lambda row: "✅" if row.get(f"{field}_PDF") == row.get(f"{field}_Excel") else "❌", axis=1
+        )
+
+    # Status Summary
+    combined["Status"] = combined.apply(
+        lambda row: "Missing in Excel" if pd.isna(row["Name_Excel"]) else (
+                    "Missing in PDF" if pd.isna(row["Name_PDF"]) else (
+                    "Mismatch" if any(row[f"{f} Match"] == "❌" for f in ["Name", "Date", "Action", "Key Findings", "Case Number"]) else "Match")),
+        axis=1
+    )
+
+    return combined[combined["Status"] != "Match"].reset_index(drop=True)
+
+# === STREAMLIT APP ===
+st.set_page_config(page_title="CRD Checker Tool", layout="wide")
+st.title("📄 FINRA Disciplinary Action Validator")
+
+st.markdown("""
+Upload a FINRA disciplinary PDF and the corresponding Excel workbook.
+The tool will match entries by CRD and compare:
+- ✅ Name
+- ✅ Date
+- ✅ Action
+- ✅ Key Findings
+- ✅ Case Number
+
+It will return a list of mismatches or missing entries.
+""")
+
+pdf_file = st.file_uploader("Upload PDF Report", type=["pdf"])
+excel_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+
+if pdf_file and excel_file:
+    with st.spinner("Analyzing files and matching CRD data..."):
+        mismatches = match_crds_from_pdf_and_excel(pdf_file.read(), excel_file.read())
+
+    st.success("Comparison complete! See results below.")
+    st.dataframe(mismatches, use_container_width=True)
+
+    csv = mismatches.to_csv(index=False).encode("utf-8")
+    st.download_button("📥 Download Mismatches as CSV", data=csv, file_name="crd_mismatches.csv")
