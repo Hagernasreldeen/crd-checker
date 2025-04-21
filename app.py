@@ -42,8 +42,7 @@ def match_crds_from_pdf_and_excel(pdf_bytes, excel_bytes):
     excel_df = pd.DataFrame(excel_data)
     excel_df["Source"] = "Excel"
 
-    if "CRD" not in pdf_df.columns or "CRD" not in excel_df.columns:
-        return pd.DataFrame([{"Error": "Missing CRD column in one of the sources. Ensure your Excel matches the required format."}])
+    
 
     if pdf_df.empty or excel_df.empty:
         return pd.DataFrame([{"Error": "One or both sources did not contain extractable CRD data. Check file formatting."}])
