@@ -100,9 +100,9 @@ if pdf_file and excel_file:
     else:
         st.success("Comparison complete! See results below.")
 
-        search = st.text_input("Search by CRD or Name")
+        search = st.text_input("Search by CRD")
         if search:
-            mismatches = mismatches[mismatches.apply(lambda row: search.lower() in str(row).lower(), axis=1)]
+            mismatches = mismatches[mismatches["CRD"].astype(str).str.contains(search.strip())]
 
         st.dataframe(mismatches, use_container_width=True)
 
